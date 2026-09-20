@@ -78,7 +78,7 @@ jobs:
           branch: model-revision-${{ steps.revision.outputs.latest }}
           branch-suffix: short-commit-hash
           commit-message: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
-          title: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
+          title: "fix: update model revision to ${{ steps.revision.outputs.latest }}"
           body: |
             ## Model Revision Update
 
