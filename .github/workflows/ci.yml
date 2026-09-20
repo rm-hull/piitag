@@ -34,7 +34,7 @@ jobs:
           echo "MODEL_REVISION=$REVISION" >> $GITHUB_OUTPUT
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
@@ -89,7 +89,7 @@ jobs:
           echo "MODEL_REVISION=$REVISION" >> $GITHUB_OUTPUT
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
