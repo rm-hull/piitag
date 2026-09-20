@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 <!-- version list -->
 
+## v0.1.2 (2026-09-20)
+
+### Bug Fixes
+
+- Update model revision to v0.4.0 ([#7](https://github.com/rm-hull/piitag/pull/7),
+  [`d5b7efd`](https://github.com/rm-hull/piitag/commit/d5b7efd0531c3e783e2c654b4215e82a513f3439))
+
+### Build System
+
+- **model**: Automate model revision updates via CI
+  ([`efd54b2`](https://github.com/rm-hull/piitag/commit/efd54b2677d5ab1c58da4024c7dc256bfa242cab))
+
+### Documentation
+
+- Add link to Hugging Face repository in README [skip ci]
+  ([`2dc56ed`](https://github.com/rm-hull/piitag/commit/2dc56edd78430fe4a897d323084470ef5604fa16))
+
+
 ## v0.1.1 (2026-09-20)
 
 ### Bug Fixes
