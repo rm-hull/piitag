@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v7
@@ -33,7 +34,6 @@ jobs:
         run: |
           uv run scripts/get_latest_revision.py > revision_output.txt
           cat revision_output.txt
-          # Export values for subsequent steps
           CURRENT=$(grep "^current=" revision_output.txt | cut -d= -f2)
           LATEST=$(grep "^latest=" revision_output.txt | cut -d= -f2)
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
