@@ -5,6 +5,41 @@ Python port of Desert Ant Labs' Redact on-device PII detector.
 The package is under active development. The implementation is being built in
 stages described in [the implementation plan](docs/PLAN.md).
 
+## Quick start
+
+Install the package and one of the supported TFLite runtimes:
+
+```sh
+uv add piitag ai-edge-litert
+```
+
+The first detection downloads the pinned model assets into the Hugging Face
+cache. You can also provide a directory containing the three model files:
+
+```python
+from piitag import Label, Options, Redact
+
+redactor = Redact()
+result = redactor.redaction("Email anna@example.com")
+print(result.redacted_text)
+print(result.restore(result.redacted_text))
+
+only_email = redactor.redaction(
+    "Email anna@example.com",
+    Options(labels=frozenset({Label.EMAIL})),
+)
+```
+
+The command-line interface accepts the same model cache by default:
+
+```sh
+piitag "Email anna@example.com"
+piitag "Call +44 20 7946 0958" --labels PHONE --json
+```
+
+Use `--directory PATH` for an offline directory containing
+`redact_tokenizer.bin`, `labels.json`, and `redact.tflite`.
+
 ## Development setup
 
 Requirements:
