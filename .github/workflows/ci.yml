@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: "0.9.17"
+  UV_VERSION: "0.12.16"
   MODEL_REVISION: "v0.4.0"
 
 jobs:
