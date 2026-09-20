@@ -1,3 +1,5 @@
 """Python interface for the Desert Ant Labs Redact PII detector."""
 
-__all__: list[str] = []
+from .model import Item, Label, Options, Redact, Redaction
+
+__all__ = ["Item", "Label", "Options", "Redact", "Redaction"]

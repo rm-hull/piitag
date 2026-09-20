@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
 
+from ._deterministic import OWNED
+from ._deterministic import detect as deterministic_detect
 from ._head import Head
 from ._pipeline import (
     Span,
@@ -14,11 +19,15 @@ from ._pipeline import (
     attach_state_codes,
     bioes_to_spans,
     bridge_name_gaps,
+    clean_spans,
     extend_particle_names,
     hysteresis,
+    mask_text,
     merge_priority,
     redact_secondary_address,
     redact_us_street,
+    relabel_by_context,
+    resolve,
     snap_spans,
 )
 from ._tokenizer import Token, Tokenizer
@@ -157,4 +166,209 @@ def ml_spans(
     return merge_priority(kept)
 
 
-__all__ = ["Head", "ml_spans", "reconstruct_offsets"]
+class _Detector:
+    def __init__(self, directory: Path) -> None:
+        tokenizer_path = directory / "redact_tokenizer.bin"
+        labels_path = directory / "labels.json"
+        model_path = directory / "redact.tflite"
+        missing = [
+            str(path)
+            for path in (tokenizer_path, labels_path, model_path)
+            if not path.is_file()
+        ]
+        if missing:
+            raise FileNotFoundError(
+                "Redact model assets are missing: " + ", ".join(missing)
+            )
+        import json
+
+        labels_data = json.loads(labels_path.read_text(encoding="utf-8"))
+        self._labels = {
+            int(identifier): label
+            for identifier, label in labels_data["id2label"].items()
+        }
+        self._tokenizer = Tokenizer(tokenizer_path.read_bytes())
+        self._head = Head(model_path)
+
+    def detect(self, text: str, minimum_confidence: float) -> list[Span]:
+        deterministic = deterministic_detect(
+            text,
+            enabled=OWNED | {"PHONE", "GOVERNMENT_ID", "PASSPORT", "DRIVERS_LICENSE"},
+        )
+        deterministic_pipeline = [
+            Span(span.start, span.end, span.label, span.score) for span in deterministic
+        ]
+        masked = mask_text(text, deterministic_pipeline)
+        neural = ml_spans(
+            masked,
+            self._tokenizer,
+            self._head,
+            self._labels,
+            minimum_confidence,
+        )
+        return clean_spans(
+            text,
+            relabel_by_context(text, resolve(deterministic_pipeline, neural)),
+        )
+
+
+class Redact:
+    """Detect and redact personal information with the Redact model."""
+
+    def __init__(self, *, directory: str | Path | None = None) -> None:
+        self._directory = Path(directory) if directory is not None else None
+        self._detector: _Detector | None = None
+
+    def _load_detector(self) -> _Detector:
+        if self._detector is None:
+            if self._directory is None:
+                raise FileNotFoundError(
+                    "A model directory is required until Phase 8 asset loading is configured"
+                )
+            self._detector = _Detector(self._directory)
+        return self._detector
+
+    def _spans(self, text: str, minimum_confidence: float) -> list[Span]:
+        return self._load_detector().detect(text, minimum_confidence)
+
+    def redaction(self, text: str, options: Options | None = None) -> Redaction:
+        chosen = options or Options()
+        allowed = (
+            chosen.labels if chosen.labels is not None else Label.default_enabled()
+        )
+        spans = [
+            span
+            for span in self._spans(text, chosen.minimum_confidence)
+            if span.label in {label.value for label in allowed}
+        ]
+        spans.sort(key=lambda span: (span.start, span.end))
+        units = list(text.encode("utf-16-le"))
+        unit_count = len(units) // 2
+        output = bytearray()
+        items: list[Item] = []
+        counts: dict[Label, int] = {}
+        last = 0
+        for span in spans:
+            start, end = span.start, span.end
+            if start < last or start >= end or end > unit_count:
+                continue
+            label = Label(span.label)
+            number = counts.get(label, 0) + 1
+            counts[label] = number
+            placeholder = f"[{label.value}_{number}]"
+            original = bytes(units[start * 2 : end * 2]).decode(
+                "utf-16-le", errors="replace"
+            )
+            output.extend(units[last * 2 : start * 2])
+            output.extend(placeholder.encode("utf-16-le"))
+            items.append(Item(label, original, placeholder, span.score, start, end))
+            last = end
+        output.extend(units[last * 2 :])
+        return Redaction(
+            output.decode("utf-16-le", errors="replace"),
+            items,
+        )
+
+
+class Label(str, Enum):
+    """A stable Redact entity category."""
+
+    GIVEN_NAME = "GIVEN_NAME"
+    SURNAME = "SURNAME"
+    STREET_NAME = "STREET_NAME"
+    BUILDING_NUMBER = "BUILDING_NUMBER"
+    SECONDARY_ADDRESS = "SECONDARY_ADDRESS"
+    CITY = "CITY"
+    STATE = "STATE"
+    ZIP_CODE = "ZIP_CODE"
+    EMAIL = "EMAIL"
+    PHONE = "PHONE"
+    CREDIT_CARD = "CREDIT_CARD"
+    BANK_ACCOUNT = "BANK_ACCOUNT"
+    ROUTING_NUMBER = "ROUTING_NUMBER"
+    IP_ADDRESS = "IP_ADDRESS"
+    URL = "URL"
+    GOVERNMENT_ID = "GOVERNMENT_ID"
+    PASSPORT = "PASSPORT"
+    DRIVERS_LICENSE = "DRIVERS_LICENSE"
+    TAX_ID = "TAX_ID"
+    SSN = "SSN"
+    IMEI = "IMEI"
+    ORG = "ORG"
+
+    @property
+    def display_name(self) -> str:
+        return {
+            "GIVEN_NAME": "Given name",
+            "SURNAME": "Surname",
+            "STREET_NAME": "Street",
+            "BUILDING_NUMBER": "Building number",
+            "SECONDARY_ADDRESS": "Unit / apartment",
+            "CITY": "City",
+            "STATE": "State / region",
+            "ZIP_CODE": "Postal code",
+            "EMAIL": "Email",
+            "PHONE": "Phone",
+            "CREDIT_CARD": "Credit card",
+            "BANK_ACCOUNT": "Bank account",
+            "ROUTING_NUMBER": "Routing number",
+            "IP_ADDRESS": "IP address",
+            "URL": "URL",
+            "GOVERNMENT_ID": "Government ID",
+            "PASSPORT": "Passport",
+            "DRIVERS_LICENSE": "Driver's license",
+            "TAX_ID": "Tax ID",
+            "SSN": "SSN",
+            "IMEI": "IMEI",
+            "ORG": "Organisation",
+        }[self.value]
+
+    @classmethod
+    def default_enabled(cls) -> frozenset[Label]:
+        return frozenset(label for label in cls if label is not cls.ORG)
+
+
+@dataclass(frozen=True)
+class Item:
+    label: Label
+    original: str
+    placeholder: str
+    confidence: float
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
+class Redaction:
+    redacted_text: str
+    items: list[Item]
+
+    def restore(self, processed: str) -> str:
+        result = processed
+        for item in self.items:
+            result = result.replace(item.placeholder, item.original)
+        return result
+
+
+@dataclass
+class Options:
+    minimum_confidence: float = 0.6
+    labels: frozenset[Label] | None = None
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.minimum_confidence):
+            self.minimum_confidence = 0.6
+        else:
+            self.minimum_confidence = min(1.0, max(0.0, self.minimum_confidence))
+
+
+__all__ = [
+    "Head",
+    "Item",
+    "Label",
+    "Options",
+    "Redact",
+    "Redaction",
+    "ml_spans",
+    "reconstruct_offsets",
+]
