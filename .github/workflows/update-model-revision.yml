@@ -32,10 +32,10 @@ jobs:
       - name: Get latest model revision
         id: revision
         run: |
-          uv run scripts/get_latest_revision.py > revision_output.txt
-          cat revision_output.txt
-          CURRENT=$(grep "^current=" revision_output.txt | cut -d= -f2)
-          LATEST=$(grep "^latest=" revision_output.txt | cut -d= -f2)
+          uv run scripts/get_latest_revision.py > /tmp/revision_output.txt
+          cat /tmp/revision_output.txt
+          CURRENT=$(grep "^current=" /tmp/revision_output.txt | cut -d= -f2)
+          LATEST=$(grep "^latest=" /tmp/revision_output.txt | cut -d= -f2)
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
           echo "latest=$LATEST" >> $GITHUB_OUTPUT
 
@@ -74,10 +74,9 @@ jobs:
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: model-revision-${{ steps.revision.outputs.latest }}
+          branch-suffix: short-commit-hash
           commit-message: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
           title: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
           body: |
