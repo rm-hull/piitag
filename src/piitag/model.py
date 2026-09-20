@@ -39,6 +39,13 @@ class _Head(Protocol):
     def run(self, input_ids: np.ndarray, attention_mask: np.ndarray) -> np.ndarray: ...
 
 
+class _Tokenizer(Protocol):
+    bos_id: int
+    eos_id: int
+
+    def tokenize(self, text: str) -> list[Token]: ...
+
+
 SEQ = 256
 MAX_CONTENT = SEQ - 2
 STRIDE = 64
@@ -100,7 +107,7 @@ def _run_window(
 
 def ml_spans(
     text: str,
-    tokenizer: Tokenizer,
+    tokenizer: _Tokenizer,
     head: _Head,
     id2label: Mapping[int, str],
     min_score: float,
