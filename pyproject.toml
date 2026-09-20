@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "piitag"
 version = "0.1.0"
-description = "Python port of Desert Ant Labs' Redact PII detector"
+description = "Python port of Desert Ant Labs' Redact on-device PII detector"
 readme = "README.md"
 license = { file = "LICENSE.md" }
 requires-python = ">=3.10"
 dependencies = [
     "huggingface_hub>=0.20",
     "numpy>=1.24",
-    "regex>=2023.0",
+    "regex>=2024.1",
 ]
 
 [project.optional-dependencies]

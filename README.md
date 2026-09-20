@@ -71,3 +71,23 @@ uv run twine check dist/*
 
 Model weights and taxonomy assets are not bundled with the package. See
 [NOTICE.md](NOTICE.md) for the applicable model license.
+
+## Release
+
+Releases use Conventional Commits on `main` with
+`python-semantic-release`. The release workflow updates the package version,
+synchronizes `uv.lock`, updates [CHANGELOG.md](CHANGELOG.md), creates a tag
+and GitHub release, and publishes the wheel and source archive to PyPI.
+
+PyPI publishing uses Trusted Publishing. Configure the PyPI project publisher
+for this repository, workflow, and the `pypi` environment before publishing.
+
+- `fix:` creates a patch release.
+- `feat:` creates a minor release.
+- `BREAKING CHANGE:` or a `!` after the commit type creates a major release.
+
+Preview the next release locally without changing files:
+
+```sh
+uv run semantic-release --noop version
+```
