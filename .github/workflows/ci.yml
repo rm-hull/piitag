@@ -13,7 +13,6 @@ permissions:
 
 env:
   UV_VERSION: "0.12.16"
-  MODEL_REVISION: "v0.4.0"
 
 jobs:
   checks:
@@ -27,6 +26,12 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Get model revision
+        id: revision
+        run: |
+          REVISION=$(cat src/piitag/.model-revision | tr -d '\n')
+          echo "MODEL_REVISION=$REVISION" >> $GITHUB_OUTPUT
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -46,7 +51,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: tests/fixtures/model
-          key: redact-model-${{ env.MODEL_REVISION }}
+          key: redact-model-${{ steps.revision.outputs.MODEL_REVISION }}
 
       - name: Fetch model assets
         if: steps.model-cache.outputs.cache-hit != 'true'
@@ -77,6 +82,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Get model revision
+        id: revision
+        run: |
+          REVISION=$(cat src/piitag/.model-revision | tr -d '\n')
+          echo "MODEL_REVISION=$REVISION" >> $GITHUB_OUTPUT
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -95,7 +106,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: tests/fixtures/model
-          key: redact-model-${{ env.MODEL_REVISION }}
+          key: redact-model-${{ steps.revision.outputs.MODEL_REVISION }}
 
       - name: Fetch model assets
         if: steps.model-cache.outputs.cache-hit != 'true'
@@ -151,7 +162,7 @@ jobs:
       url: https://pypi.org/p/piitag
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v7
         with:
           name: distributions
           path: dist/
