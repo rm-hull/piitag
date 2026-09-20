@@ -1,0 +1,5 @@
+current=v0.3.0
+latest=v0.4.0
+version_file=src/piitag/.model-revision
+model_repo=desert-ant-labs/redact
+update_needed=true
