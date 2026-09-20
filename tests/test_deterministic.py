@@ -1,4 +1,7 @@
-"""Tests for deterministic checksum validators."""
+"""Tests for deterministic recognizers and checksum validators."""
+
+import json
+from pathlib import Path
 
 import pytest
 
@@ -6,6 +9,7 @@ from piitag._deterministic import (
     VAT,
     aba_routing_ok,
     bic_ok,
+    detect,
     digit_count,
     dl,
     es_dni_ok,
@@ -18,6 +22,8 @@ from piitag._deterministic import (
     valid_se_pn,
     valid_us_ssn,
 )
+
+ROOT = Path(__file__).parent
 
 
 def test_numeric_helpers_and_luhn() -> None:
@@ -117,3 +123,12 @@ def test_vat_mapping_and_alias() -> None:
         "SK",
     }
     assert VAT["GR"] is VAT["EL"]
+
+
+def test_deterministic_corpus_parity() -> None:
+    rows = json.loads((ROOT / "fixtures" / "deterministic_corpus.json").read_text())
+    assert len(rows) == 1362
+    for row in rows:
+        got = sorted((span.start, span.end, span.label) for span in detect(row["text"]))
+        expected = sorted(tuple(item) for item in row["py"])
+        assert got == expected, row["text"]

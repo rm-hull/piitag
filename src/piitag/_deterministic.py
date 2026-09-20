@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+
+import regex as re  # type: ignore[import-untyped]
+
+from ._utf16 import UTF16Text
 
 
 def dl(value: str) -> list[int]:
@@ -420,8 +424,16 @@ def fi_hetu_ok(value: str) -> bool:
 
 nat_validators: dict[int, list[Callable[[str], bool]]] = {
     9: [nl_bsn_ok, pt_nif_ok, pl_nip_ok],
-    10: [bg_egn_ok, cz_rc_ok, hu_adoaz_ok, at_svnr_ok],
-    11: [pl_pesel_ok, hr_oib_ok, ee_isikukood_ok, lv_pk_ok, be_rrn_ok],
+    10: [bg_egn_ok, cz_rc_ok, hu_adoaz_ok, at_svnr_ok, pl_nip_ok],
+    11: [
+        pl_pesel_ok,
+        hr_oib_ok,
+        ee_isikukood_ok,
+        lv_pk_ok,
+        be_rrn_ok,
+        gr_amka_ok,
+        it_piva_ok,
+    ],
     13: [ro_cnp_ok, si_emso_ok],
     15: [fr_nir_ok],
 }
@@ -444,7 +456,10 @@ def _vat_validators() -> dict[str, Callable[[str], bool]]:
         d = dl(n)
         if not _pattern(r"U\d{8}", n):
             return False
-        total = 4 + _luhn_weighted_sum(d[:7])
+        total = 4
+        for index, digit in enumerate(d[:7]):
+            value = digit * (2 if index % 2 == 1 else 1)
+            total += value - 9 if value > 9 else value
         return (10 - total % 10) % 10 == d[7]
 
     def vat_de(n: str) -> bool:
@@ -505,7 +520,11 @@ def _vat_validators() -> dict[str, Callable[[str], bool]]:
         if _pattern(r"\d{9}", n):
             d = dl(n)
             check = sum(d[i] * (i + 1) for i in range(8)) % 11
-            return (0 if check == 10 else check) == d[8]
+            if check == 10:
+                check = sum(d[i] * (i + 3) for i in range(8)) % 11
+                if check == 10:
+                    check = 0
+            return check == d[8]
         return _pattern(r"\d{10}", n) and bg_egn_ok(n)
 
     def vat_el(n: str) -> bool:
@@ -543,7 +562,7 @@ def _vat_validators() -> dict[str, Callable[[str], bool]]:
         "CZ": lambda n: (
             (
                 _pattern(r"\d{8}", n)
-                and (11 - wsum(dl(n)[:7], range(8, 1, -1))) % 10 == dl(n)[7]
+                and (11 - (wsum(dl(n)[:7], range(8, 1, -1)) % 11)) % 10 == dl(n)[7]
             )
             or (_pattern(r"\d{10}", n) and cz_rc_ok(n))
         ),
@@ -587,3 +606,404 @@ def _vat_validators() -> dict[str, Callable[[str], bool]]:
 VAT = _vat_validators()
 VAT["GR"] = VAT["EL"]
 vat = VAT
+
+
+@dataclass
+class Span:
+    """A deterministic match with UTF-16 offsets."""
+
+    start: int
+    end: int
+    label: str
+    score: float = 1.0
+
+
+OWNED = frozenset(
+    {
+        "EMAIL",
+        "URL",
+        "IP_ADDRESS",
+        "CREDIT_CARD",
+        "SSN",
+        "BANK_ACCOUNT",
+        "ROUTING_NUMBER",
+        "TAX_ID",
+        "GOVERNMENT_ID",
+        "PASSPORT",
+        "DRIVERS_LICENSE",
+        "IMEI",
+    }
+)
+
+_EMAIL = re.compile(
+    r"(?<![A-Za-z0-9.!#$%&'*+/=?^_`{|}~-])"
+    r"([\p{L}\p{N}.!#$%&'*+/=?^`{|}~-]{1,64}@"
+    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z]{2,63})(?![A-Za-z0-9-])"
+)
+_URL = re.compile(r"\b((?:https?://|ftp://|www\.)[^\s<>()\[\]{}\"']{3,})", re.I)
+_IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d)(?!\.\d)")
+_IPV6 = re.compile(r"(?<![\w:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\w:])", re.I)
+_MAC = re.compile(r"(?<![0-9a-f])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![0-9a-f])", re.I)
+_CC = re.compile(r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)")
+_IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b", re.I)
+_BIC = re.compile(r"\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b")
+_SSN = re.compile(r"(?<!\d)(\d{3})[- ](\d{2})[- ](\d{4})(?!\d)")
+_ROUTING = re.compile(r"(?<!\d)\d{9}(?!\d)")
+_ES_DNI = re.compile(r"(?<![A-Z0-9])(?:\d{8}|[XYZ]\d{7})[A-Z](?![A-Z0-9])", re.I)
+_NAT_ID = re.compile(r"(?<![A-Za-z0-9])\d[\d .\-]{7,17}\d(?![A-Za-z0-9])")
+_IT_CF = re.compile(
+    r"(?<![A-Za-z0-9])[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z](?![A-Za-z0-9])", re.I
+)
+_FI_HETU = re.compile(r"(?<![A-Za-z0-9])\d{6}[-+A-F]\d{3}[0-9A-Y](?![A-Za-z0-9])")
+_DK_CPR = re.compile(r"(?<!\d)\d{6}[- ]?\d{4}(?!\d)")
+_VAT = re.compile(
+    r"(?<![A-Za-z0-9])(AT|BE|BG|CY|CZ|DE|DK|EE|EL|GR|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)"
+    r"\s?([0-9A-Za-z]{5,14})(?![A-Za-z0-9])"
+)
+_IMEI = re.compile(r"(?<!\d)\d{15}(?!\d)")
+_SE_PN = re.compile(r"(?<!\d)((?:\d{2})?\d{6})[-+](\d{4})(?!\d)")
+_PASSPORT_VALUE = re.compile(r"(?<![A-Za-z0-9])[A-Z0-9]{6,9}(?![A-Za-z0-9])")
+_PPS = re.compile(r"(?<![A-Za-z0-9])\d{7}[A-Za-z]{1,2}(?![A-Za-z0-9])")
+_PL_DL = re.compile(r"(?<![0-9/])\d{5}/\d{2}/\d{4,7}(?![0-9/])")
+_CONTEXT_DIGIT = re.compile(r"(?<![A-Za-z0-9])\d{7,12}(?![A-Za-z0-9])")
+_INTL_PHONE = re.compile(
+    r"(?<!\w)\+\d{1,3}[ .-]?(?:\(?\d{1,5}\)?[ .-]?){1,5}\d{2,5}(?!\w)"
+)
+_GENERIC_PHONE = re.compile(
+    r"(?<!\w)(?:\+?\d{1,3}[ .-]?)?(?:\(?\d{2,5}\)?[ .-]?){2,5}\d{2,5}(?!\w)"
+)
+_DL_KW = re.compile(
+    r"(?<![\p{L}\p{N}])(?:driving licen[cs]e|driver'?s? licen[cs]e|licence number|"
+    r"permis de conduire|permis de conduite|f[uü]hrerschein|fahrerlaubnis(?:nummer)?|"
+    r"patente(?: di guida)?|numero patente|prawo jazdy|rijbewijs(?:nummer)?|"
+    r"(?:carn[eé]|permiso) de conducir|carta de condu[cç][aã]o|k[oö]rkort(?:snummer)?|"
+    r"k[oø]rekort|ajokortti|vezet[oő]i enged[eé]ly|[rř]idi[cč]sk[\p{L}]* pr[uů]kaz[\p{L}]*|"
+    r"vodi[cč]sk[\p{L}]* preukaz[\p{L}]*|permis de conducere|voza[cč]k[au] dozvol[ae]|"
+    r"vozni[sš]ko dovoljenje|vairuotojo pa[zž]ym[eė]jimas|vad[iī]t[aā]ja apliec[iī]ba|"
+    r"juhiluba|licenzja tas-sewqan)(?:[\s.:\-]*(?:nr|no|nummer|number|num[eé]ro|n[°º])\.?)?",
+    re.I,
+)
+_DL_VALUE = re.compile(
+    r"^[^A-Z0-9\n]{0,14}?([A-Z0-9](?:[A-Z0-9]|[ .\-/](?=[A-Z0-9])){4,24})"
+)
+_DOC_KW = re.compile(
+    r"\b(passport|passeport|reisepass|pasaporte|passaporto|paspoort|national id|identity card|"
+    r"id card|identity number|identification number|id number|id no|personalausweis|ausweisnummer|"
+    r"ausweis|carte d.identit[eé]|documento de identidad|documento di identit[aà]|"
+    r"carta d.identit[aà]|identiteitskaart|n[uú]mero de identificaci[oó]n|de identifica[cç][aã]o|c[eé]dula)",
+    re.I,
+)
+_DOC_VALUE = re.compile(
+    r"^[^A-Z0-9\n]{0,18}?([A-Z0-9](?:[A-Z0-9]|[ .\-/](?=[A-Z0-9])){4,44})"
+)
+_PASSPORT_KW = re.compile(
+    r"^(passport|passeport|reisepass|pasaporte|passaporto|paspoort)", re.I
+)
+
+_IP_CONTEXT = re.compile(
+    r"\b(?:ip|ipv4|ipv6|address|addr|host|server|node|endpoint|cidr)\b|地址", re.I
+)
+_ROUTING_CONTEXT = re.compile(r"\b(?:routing|aba|bank|wire|ach)\b", re.I)
+_SSN_CONTEXT = re.compile(
+    r"\b(?:ssn|social security|social insurance|social number|sin|seguridad social)\b|社保|社会保障|사회보장",
+    re.I,
+)
+_TAX_CONTEXT = re.compile(
+    r"\b(?:tax|taxnum|tax number|tax identification|tin|vat|npwp)\b|税号|税|세금", re.I
+)
+_GOV_CONTEXT = re.compile(
+    r"\b(?:national id|identity card|id card|government id|nric|fin|dni|nie|cpf|cnpj|passport)\b|身份证|주민등록",
+    re.I,
+)
+_NAT_CONTEXT = re.compile(
+    r"(?<![\p{L}\p{N}])(?:id|ident\w*|national|personal (?:id|number|code)|pesel|bsn|burgerservice\w*|egn|ЕГН|cnp|oib|amka|ΑΜΚΑ|isikukood|henkilötunnus|hetu|codice fiscale|rodné|personnummer|personas kods|asmens kodas|emšo|emso|matricule|rijksregister\w*|steuer\w*|dni|nie|nif|nir|insee|sécu\w*|sécurité sociale|secu\w*|rodn[eé]|ad[oó]azonos[ií]t[oó]|ad[oó]sz[aá]m|cpr|nip|partita iva|p\.?\s?iva|iva|vat|svnr|sozialversicherung\w*|pps\w*|tax|fiscal\w*|social|seguridad)(?![\p{L}\p{N}])",
+    re.I,
+)
+_VAT_CONTEXT = re.compile(
+    r"(?<![\p{L}\p{N}])(?:vat|ust[- ]?id\w*|umsatzsteuer|tva|iva|partita iva|btw|moms|alv|dph|di[cč]|pvn|pvm|dds|nip|nif|cif|[aá]fa|arvonlis\w*|fiscal\w*|tax)(?![\p{L}\p{N}])|ΑΦΜ|ФДС",
+    re.I,
+)
+_IMEI_CONTEXT = re.compile(r"\bimei\b", re.I)
+_SE_CONTEXT = re.compile(
+    r"\b(?:personnummer|person\s*number|födelsenummer|personnr)\b", re.I
+)
+_PASSPORT_CONTEXT = re.compile(
+    r"\b(?:passport|passeport|reisepass|pasaporte|passaporto|paspoort)\b", re.I
+)
+_PPS_CONTEXT = re.compile(r"\b(?:pps|ppsn|personal\s*public\s*service)\b", re.I)
+_DK_CONTEXT = re.compile(r"\bcpr\b", re.I)
+_BIC_BEFORE = re.compile(
+    r"(?:swift\s*[-/]?\s*bic|swift\s+code|bic(?:\s+code)?)\s*[:#=(\[]?\s*$", re.I
+)
+_CREDIT_CONTEXT = re.compile(
+    r"\b(?:credit\s*card|debit\s*card|payment\s*card|bank\s*card|card\s*(?:number|no|num|info|ending|on file)|card\s*(?:charged|debited)|charged?\s*(?:my\s*|the\s*)?card|\bcard\b|visa|mastercard|master\s*card|maestro|amex|american\s*express|discover|diners|tarjeta|carte bancaire|kreditkarte|carta di credito|cartão)\b|信用卡|银行卡|カード|카드",
+    re.I,
+)
+_PHONE_CONTEXT = re.compile(
+    r"\b(?:phone|mobile|tel(?:ephone)?|cell|call(?:\s*me)?|fax|whatsapp|sms|contact number|phone number|telefon(?:ní|nummer|szám|o|oon)?|teléfono|téléphone|telepon|mobil(?:e|ni|telefon)?|gsm|tlf|zavolejte|zadzwoń|appelez|appeler|téléphonez|chiamare|chiami|chiama|llame|llamar|llamada|ligue|ligar|bel(?:len)?|hívja|hívjon|sunați|sună|ring|ringa|nazovite|καλέστε|τηλέφωνο|телефон)\b|电话|電話|연락처|전화",
+    re.I,
+)
+
+
+def _utf16_offset(text: str, index: int) -> int:
+    return len(text[:index].encode("utf-16-le")) // 2
+
+
+def _match_span(
+    text: str, match: re.Match[str], group: int | str = 0
+) -> tuple[int, int]:
+    start, end = match.span(group)
+    return _utf16_offset(text, start), _utf16_offset(text, end)
+
+
+def _context(
+    pattern: re.Pattern[str], text: str, start: int, end: int, window: int = 48
+) -> bool:
+    return bool(
+        pattern.search(text[max(0, start - window) : min(len(text), end + window)])
+    )
+
+
+def _before(pattern: re.Pattern[str], text: str, start: int, window: int = 64) -> bool:
+    return bool(pattern.search(text[max(0, start - window) : start]))
+
+
+def _is_ip(value: str) -> bool:
+    if re.fullmatch(r"(\d{1,3}\.){3}\d{1,3}", value):
+        return all(int(part) <= 255 for part in value.split("."))
+    if (
+        re.fullmatch(r"[0-9a-f:]+", value, re.I)
+        and ":" in value
+        and value not in {":", "::"}
+    ):
+        return value.count("::") <= 1
+    return False
+
+
+def _iban_trim(candidate: str) -> str | None:
+    lengths = {"DE": 22, "GB": 22, "NL": 18, "BE": 16, "ES": 24, "FR": 27, "IT": 27}
+    want = lengths.get(candidate[:2].upper())
+    if want is None:
+        # Use the complete table indirectly through the validator's accepted countries.
+        compact = "".join(char for char in candidate if char.isalnum())
+        if not iban_ok(compact):
+            return None
+        want = len(compact)
+    seen = 0
+    for index, char in enumerate(candidate):
+        if char.isalnum():
+            seen += 1
+            if seen == want:
+                return candidate[: index + 1]
+    return None
+
+
+def _trim_word(text: str, value: str, end: int) -> tuple[str, int]:
+    while (
+        len(value) >= 2
+        and value[-1].isalpha()
+        and value[-2] == " "
+        and end < len(text)
+        and "a" <= text[end] <= "z"
+    ):
+        value = value[:-2]
+        end -= 2
+    return value, end
+
+
+def _keyword_value(
+    text: str, match: re.Match[str], value_re: re.Pattern[str]
+) -> tuple[str, int, int] | None:
+    after = text[match.end() :]
+    value_match = value_re.search(after)
+    if value_match is None:
+        return None
+    value = value_match.group(1)
+    start = _utf16_offset(text, match.end() + value_match.start(1))
+    end = _utf16_offset(text, match.end() + value_match.end(1))
+    value, end = _trim_word(text, value, end)
+    return value, start, end
+
+
+def _merge(spans: list[Span]) -> list[Span]:
+    ordered = sorted(
+        spans, key=lambda span: (span.start, -(span.end - span.start), span.label)
+    )
+    output: list[Span] = []
+    for span in ordered:
+        if not output or span.start >= output[-1].end:
+            output.append(span)
+            continue
+        previous = output[-1]
+        span_length = span.end - span.start
+        previous_length = previous.end - previous.start
+        if span_length > previous_length or (
+            span_length == previous_length and span.score > previous.score
+        ):
+            output[-1] = span
+    return output
+
+
+def detect(text: str, enabled: frozenset[str] | None = None) -> list[Span]:
+    """Detect deterministic entities in ``text``."""
+    spans: list[Span] = []
+    active = (
+        OWNED | {"PHONE", "GOVERNMENT_ID", "PASSPORT", "DRIVERS_LICENSE"}
+        if enabled is None
+        else enabled
+    )
+
+    def add(start: int, end: int, label: str, score: float = 1.0) -> None:
+        if start < end:
+            spans.append(Span(start, end, label, score))
+
+    for match in _EMAIL.finditer(text):
+        add(*_match_span(text, match, 1), "EMAIL")
+    for match in _URL.finditer(text):
+        start, end = _match_span(text, match, 1)
+        if start > 0 and UTF16Text(text).slice(start - 1, start) == "@":
+            continue
+        add(start, end, "URL")
+    for pattern in (_IPV4, _IPV6):
+        for match in pattern.finditer(text):
+            value = match.group()
+            if (
+                value not in {":", "::"}
+                and _is_ip(value)
+                and _context(_IP_CONTEXT, text, match.start(), match.end(), 40)
+            ):
+                add(*_match_span(text, match), "IP_ADDRESS")
+    for match in _MAC.finditer(text):
+        add(*_match_span(text, match), "IP_ADDRESS")
+    for match in _CC.finditer(text):
+        value = match.group()
+        if len(set(dl(value))) <= 1 or not luhn_ok(value):
+            continue
+        if _CREDIT_CONTEXT.search(text[max(0, match.start() - 56) : match.start()]):
+            start, end = _match_span(text, match)
+            while end > start and UTF16Text(text).slice(end - 1, end) in {
+                " ",
+                "-",
+                ".",
+            }:
+                end -= 1
+            add(start, end, "CREDIT_CARD")
+    for match in _IBAN.finditer(text):
+        raw = match.group()
+        candidate = _iban_trim(raw) or raw
+        compact = "".join(char for char in candidate if char.isalnum())
+        start = _utf16_offset(text, match.start())
+        end = start + len(candidate.encode("utf-16-le")) // 2
+        if end < len(UTF16Text(text)) and UTF16Text(text).is_word_char_at(end):
+            continue
+        if iban_ok(compact):
+            add(start, end, "BANK_ACCOUNT")
+    for match in _BIC.finditer(text):
+        if bic_ok(match.group()) and _before(_BIC_BEFORE, text, match.start(), 64):
+            add(*_match_span(text, match), "BANK_ACCOUNT")
+    for match in _ES_DNI.finditer(text):
+        if es_dni_ok(match.group()) and _context(
+            _GOV_CONTEXT, text, match.start(), match.end(), 56
+        ):
+            add(*_match_span(text, match), "GOVERNMENT_ID")
+    for match in _NAT_ID.finditer(text):
+        value = match.group()
+        validators = nat_validators.get(len(dl(value)), [])
+        if any(validator(value) for validator in validators) and _context(
+            _NAT_CONTEXT, text, match.start(), match.end(), 64
+        ):
+            add(*_match_span(text, match), "GOVERNMENT_ID", 0.92)
+    for match in _IT_CF.finditer(text):
+        if it_cf_ok(match.group()):
+            add(*_match_span(text, match), "GOVERNMENT_ID", 0.95)
+    for match in _FI_HETU.finditer(text):
+        if fi_hetu_ok(match.group()):
+            add(*_match_span(text, match), "GOVERNMENT_ID", 0.95)
+    for match in _DK_CPR.finditer(text):
+        d = dl(match.group())
+        if (
+            1 <= int("".join(map(str, d[:2]))) <= 31
+            and 1 <= int("".join(map(str, d[2:4]))) <= 12
+            and _before(_DK_CONTEXT, text, match.start(), 40)
+        ):
+            add(*_match_span(text, match), "GOVERNMENT_ID", 0.85)
+    for match in _VAT.finditer(text):
+        country, number = match.groups()
+        validator = VAT.get(country)
+        if (
+            validator
+            and validator(number.replace(" ", "").upper())
+            and (
+                country not in {"ES", "LV", "NL"}
+                or _context(_VAT_CONTEXT, text, match.start(), match.end(), 40)
+            )
+        ):
+            add(*_match_span(text, match), "TAX_ID", 0.95)
+    for match in _IMEI.finditer(text):
+        if imei_ok(match.group()) and _context(
+            _IMEI_CONTEXT, text, match.start(), match.end(), 32
+        ):
+            add(*_match_span(text, match), "IMEI", 0.9)
+    for match in _SSN.finditer(text):
+        if valid_us_ssn(match.group()) or _context(
+            _SSN_CONTEXT, text, match.start(), match.end()
+        ):
+            add(*_match_span(text, match), "SSN")
+    for match in _SE_PN.finditer(text):
+        if valid_se_pn(match.group()) or _before(_SE_CONTEXT, text, match.start(), 40):
+            add(*_match_span(text, match), "GOVERNMENT_ID")
+    for match in _PASSPORT_VALUE.finditer(text):
+        value = match.group()
+        if any(char.isdigit() for char in value) and _before(
+            _PASSPORT_CONTEXT, text, match.start(), 32
+        ):
+            add(*_match_span(text, match), "PASSPORT")
+    for match in _DL_KW.finditer(text):
+        result = _keyword_value(text, match, _DL_VALUE)
+        if result and sum(char.isalnum() for char in result[0]) >= 5:
+            add(result[1], result[2], "DRIVERS_LICENSE", 0.9)
+    for match in _PL_DL.finditer(text):
+        add(*_match_span(text, match), "DRIVERS_LICENSE", 0.9)
+    for match in _DOC_KW.finditer(text):
+        result = _keyword_value(text, match, _DOC_VALUE)
+        if (
+            result
+            and any(char.isdigit() for char in result[0])
+            and sum(char.isalnum() for char in result[0]) >= 6
+        ):
+            label = "PASSPORT" if _PASSPORT_KW.match(match.group()) else "GOVERNMENT_ID"
+            add(result[1], result[2], label, 0.9)
+    for match in _PPS.finditer(text):
+        if ie_pps_ok(match.group()) or _context(
+            _PPS_CONTEXT, text, match.start(), match.end(), 32
+        ):
+            add(*_match_span(text, match), "GOVERNMENT_ID")
+    for match in _CONTEXT_DIGIT.finditer(text):
+        before = text[max(0, match.start() - 56) : match.start()]
+        count = digit_count(match.group())
+        if (
+            7 <= count <= 12
+            and _SSN_CONTEXT.search(before)
+            and not _TAX_CONTEXT.search(before)
+        ):
+            add(*_match_span(text, match), "SSN", 0.9)
+    for match in _ROUTING.finditer(text):
+        if aba_routing_ok(match.group()) and _context(
+            _ROUTING_CONTEXT, text, match.start(), match.end()
+        ):
+            add(*_match_span(text, match), "ROUTING_NUMBER")
+    for match in _INTL_PHONE.finditer(text):
+        if 8 <= digit_count(match.group()) <= 15:
+            add(*_match_span(text, match), "PHONE", 0.92)
+    for match in _GENERIC_PHONE.finditer(text):
+        value = match.group()
+        before = text[max(0, match.start() - 56) : match.start()]
+        digits = digit_count(value)
+        grouped = any(char in " .-" for char in value)
+        if _PHONE_CONTEXT.search(before) and (
+            (9 <= digits <= 15) or (7 <= digits <= 8 and grouped)
+        ):
+            add(*_match_span(text, match), "PHONE", 0.88)
+
+    return [span for span in _merge(spans) if span.label in active]
