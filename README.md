@@ -33,8 +33,8 @@ only_email = redactor.redaction(
 The command-line interface accepts the same model cache by default:
 
 ```sh
-piitag "Email anna@example.com"
-piitag "Call +44 20 7946 0958" --labels PHONE --json
+uv run piitag "Email anna@example.com"
+uv run piitag "Call +44 20 7946 0958" --labels PHONE --json
 ```
 
 Use `--directory PATH` for an offline directory containing

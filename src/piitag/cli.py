@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import NoReturn
 
 from .model import Label, Options, Redact
 
@@ -77,11 +76,10 @@ def _run(args: argparse.Namespace) -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> NoReturn:
+def main(argv: list[str] | None = None) -> None:
     """Run the piitag command-line interface."""
     args = _parser().parse_args(argv)
     try:
         print(_run(args))
     except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
         _parser().error(str(error))
-    raise AssertionError("argparse.error should terminate the process")
