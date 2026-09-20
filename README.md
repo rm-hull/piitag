@@ -96,8 +96,9 @@ uv run semantic-release --noop version
 
 The `piitag` wrapper code is available under the MIT license. Model weights
 and taxonomy assets are not bundled with the package. Runtime downloads from
-the `desert-ant-labs/redact` Hugging Face repository at revision `v0.4.0` are
-subject to the Desert Ant Labs Source-Available License. See
+the [`desert-ant-labs/redact`](https://huggingface.co/desert-ant-labs/redact)
+Hugging Face repository at revision `v0.4.0` are subject to the Desert Ant
+Labs Source-Available License. See
 [NOTICE.md](NOTICE.md) before using those assets commercially.
 
 ## AI-generated code disclaimer
