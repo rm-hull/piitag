@@ -196,19 +196,23 @@ Port `Span.swift`'s `UTF16Text` as a Python class:
 class UTF16Text:
     """UTF-16 code-unit-indexed view over a str, matching the Swift/JS
     reference pipeline's offset convention exactly."""
+
     def __init__(self, text: str) -> None:
         self.string = text
         self._units: list[int] = ...  # via text.encode("utf-16-le"), 2 bytes per unit
 
     def __len__(self) -> int: ...
-    def scalar_at(self, i: int) -> str | None: ...   # single-unit decode; BMP assumption, matches Swift
-    def slice(self, a: int, b: int) -> str: ...        # decode units[a:b] back to str
+    def scalar_at(
+        self, i: int
+    ) -> str | None: ...  # single-unit decode; BMP assumption, matches Swift
+    def slice(self, a: int, b: int) -> str: ...  # decode units[a:b] back to str
     def find(self, needle: str, start: int) -> tuple[int, int] | None: ...
     def is_whitespace_at(self, i: int) -> bool: ...
-    def is_word_char_at(self, i: int) -> bool: ...      # alphabetic OR numeric-type OR the specific
-                                                          # combining-mark categories Swift lists —
-                                                          # port the exact category set, don't
-                                                          # approximate with `str.isalnum()`
+    def is_word_char_at(self, i: int) -> bool:
+        ...  # alphabetic OR numeric-type OR the specific
+        # combining-mark categories Swift lists —
+        # port the exact category set, don't
+        # approximate with `str.isalnum()`
 ```
 
 Implementation notes:
@@ -335,11 +339,23 @@ verbatim into `regex` module syntax, unlike stdlib `re`.
 
 Structure:
 ```python
-OWNED: frozenset[str] = frozenset({
-    "EMAIL", "URL", "IP_ADDRESS", "CREDIT_CARD", "SSN",
-    "BANK_ACCOUNT", "ROUTING_NUMBER", "TAX_ID", "GOVERNMENT_ID", "PASSPORT",
-    "DRIVERS_LICENSE", "IMEI",
-})
+OWNED: frozenset[str] = frozenset(
+    {
+        "EMAIL",
+        "URL",
+        "IP_ADDRESS",
+        "CREDIT_CARD",
+        "SSN",
+        "BANK_ACCOUNT",
+        "ROUTING_NUMBER",
+        "TAX_ID",
+        "GOVERNMENT_ID",
+        "PASSPORT",
+        "DRIVERS_LICENSE",
+        "IMEI",
+    }
+)
+
 
 def detect(text: str, enabled: frozenset[str] | None = None) -> list[Span]: ...
 ```
@@ -551,19 +567,25 @@ class Item:
     original: str
     placeholder: str
     confidence: float
-    start: int            # UTF-16 offset into the original text
-    end: int               # UTF-16 offset into the original text
+    start: int  # UTF-16 offset into the original text
+    end: int  # UTF-16 offset into the original text
+
 
 @dataclass(frozen=True)
 class Redaction:
     redacted_text: str
     items: list[Item]
+
     def restore(self, processed: str) -> str: ...
+
 
 @dataclass
 class Options:
-    minimum_confidence: float = 0.6   # clamped to [0, 1], NaN/inf -> 0.6
-    labels: frozenset[Label] | None = None   # None -> Label.default_enabled (all but ORG)
+    minimum_confidence: float = 0.6  # clamped to [0, 1], NaN/inf -> 0.6
+    labels: frozenset[Label] | None = (
+        None  # None -> Label.default_enabled (all but ORG)
+    )
+
 
 class Redact:
     def __init__(self, *, directory: str | Path | None = None) -> None: ...
