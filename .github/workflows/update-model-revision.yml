@@ -17,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -59,19 +61,6 @@ jobs:
           echo "Repository is already at the latest model revision."
           exit 0
 
-      - name: Create branch
-        id: branch
-        run: |
-          LATEST="${{ steps.revision.outputs.latest }}"
-          BRANCH_NAME="model-update-${LATEST}"
-          echo "name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Delete branch if it exists (local or remote)
-          git branch -D "$BRANCH_NAME" 2>/dev/null || true
-          git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
-          git checkout -b "$BRANCH_NAME"
-
       - name: Update model revision file
         run: |
           LATEST="${{ steps.revision.outputs.latest }}"
@@ -83,26 +72,13 @@ jobs:
           echo "=== src/piitag/.model-revision ==="
           cat src/piitag/.model-revision
 
-      - name: Commit and push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CURRENT="${{ steps.revision.outputs.current }}"
-          LATEST="${{ steps.revision.outputs.latest }}"
-          BRANCH="${{ steps.branch.outputs.name }}"
-          
-          git add src/piitag/.model-revision
-          git diff --cached --quiet || git commit -m "chore: update model revision to ${LATEST} [skip ci]" --no-verify
-          git push "${BRANCH}"
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ steps.branch.outputs.name }}
-          base: main
+          commit-message: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
           title: "chore: update model revision to ${{ steps.revision.outputs.latest }}"
           body: |
             ## Model Revision Update
