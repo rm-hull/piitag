@@ -8,7 +8,28 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 REPOSITORY = "desert-ant-labs/redact"
-REVISION = "v0.4.0"
+
+
+def _get_revision() -> str:
+    """Read revision from .model-revision file."""
+    # Try package location first (for installed packages)
+    import piitag
+
+    package_dir = Path(piitag.__file__).parent
+    revision_file = package_dir / ".model-revision"
+    if revision_file.exists():
+        return revision_file.read_text().strip()
+
+    # Fallback to development location
+    revision_file = Path("src/piitag/.model-revision")
+    if revision_file.exists():
+        return revision_file.read_text().strip()
+
+    # Final fallback
+    return "v0.4.0"
+
+
+REVISION = _get_revision()
 ASSETS = (
     "redact_tokenizer.bin",
     "labels.json",
@@ -28,7 +49,7 @@ def fetch_assets(destination: Path) -> None:
         )
         target = destination / filename
         target.write_bytes(Path(cached_path).read_bytes())
-        print(f"Downloaded {filename} -> {target}")
+        print(f"Downloaded {filename} -> {target} ({REVISION})")
 
 
 def main() -> None:
