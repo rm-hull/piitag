@@ -10,6 +10,7 @@ from typing import Protocol
 
 import numpy as np
 
+from ._assets import Assets, resolve_assets
 from ._deterministic import OWNED
 from ._deterministic import detect as deterministic_detect
 from ._head import Head
@@ -167,28 +168,16 @@ def ml_spans(
 
 
 class _Detector:
-    def __init__(self, directory: Path) -> None:
-        tokenizer_path = directory / "redact_tokenizer.bin"
-        labels_path = directory / "labels.json"
-        model_path = directory / "redact.tflite"
-        missing = [
-            str(path)
-            for path in (tokenizer_path, labels_path, model_path)
-            if not path.is_file()
-        ]
-        if missing:
-            raise FileNotFoundError(
-                "Redact model assets are missing: " + ", ".join(missing)
-            )
+    def __init__(self, assets: Assets) -> None:
         import json
 
-        labels_data = json.loads(labels_path.read_text(encoding="utf-8"))
+        labels_data = json.loads(assets.labels.read_text(encoding="utf-8"))
         self._labels = {
             int(identifier): label
             for identifier, label in labels_data["id2label"].items()
         }
-        self._tokenizer = Tokenizer(tokenizer_path.read_bytes())
-        self._head = Head(model_path)
+        self._tokenizer = Tokenizer(assets.tokenizer.read_bytes())
+        self._head = Head(assets.tflite)
 
     def detect(self, text: str, minimum_confidence: float) -> list[Span]:
         deterministic = deterministic_detect(
@@ -222,10 +211,10 @@ class Redact:
     def _load_detector(self) -> _Detector:
         if self._detector is None:
             if self._directory is None:
-                raise FileNotFoundError(
-                    "A model directory is required until Phase 8 asset loading is configured"
-                )
-            self._detector = _Detector(self._directory)
+                assets = resolve_assets()
+            else:
+                assets = resolve_assets(self._directory)
+            self._detector = _Detector(assets)
         return self._detector
 
     def _spans(self, text: str, minimum_confidence: float) -> list[Span]:

@@ -3,7 +3,9 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+from piitag._assets import resolve_assets
 from piitag._pipeline import Span
 from piitag._tokenizer import Token
 from piitag._utf16 import UTF16Text
@@ -65,3 +67,21 @@ def test_label_display_names_and_options_are_stable() -> None:
     assert Label.ORG not in Label.default_enabled()
     assert Options(float("nan")).minimum_confidence == 0.6
     assert Options(4).minimum_confidence == 1.0
+
+
+def test_asset_resolution_uses_a_complete_local_directory(tmp_path) -> None:
+    for filename in ("redact_tokenizer.bin", "labels.json", "redact.tflite"):
+        (tmp_path / filename).touch()
+
+    assets = resolve_assets(tmp_path)
+
+    assert assets.tokenizer == tmp_path / "redact_tokenizer.bin"
+    assert assets.labels == tmp_path / "labels.json"
+    assert assets.tflite == tmp_path / "redact.tflite"
+
+
+def test_asset_resolution_reports_missing_local_files(tmp_path) -> None:
+    (tmp_path / "labels.json").touch()
+
+    with pytest.raises(FileNotFoundError, match="redact_tokenizer.bin"):
+        resolve_assets(tmp_path)
