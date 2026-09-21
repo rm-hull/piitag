@@ -55,24 +55,15 @@ jobs:
             echo "Newer revision available: $LATEST (current: $CURRENT)"
           fi
 
-      - name: Exit if no update needed
-        if: steps.check.outputs.update_needed == 'false'
-        run: |
-          echo "Repository is already at the latest model revision."
-          exit 0
-
       - name: Update model revision file
+        if: steps.check.outputs.update_needed == 'true'
         run: |
           LATEST="${{ steps.revision.outputs.latest }}"
           echo "$LATEST" > src/piitag/.model-revision
           echo "Updated src/piitag/.model-revision to $LATEST"
 
-      - name: Verify changes
-        run: |
-          echo "=== src/piitag/.model-revision ==="
-          cat src/piitag/.model-revision
-
       - name: Create Pull Request
+        if: steps.check.outputs.update_needed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
           branch: model-revision-${{ steps.revision.outputs.latest }}
